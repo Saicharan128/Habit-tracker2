@@ -1,1 +1,2 @@
-# This project runs entirely on the Python standard library; no external packages required.
+Flask
+Flask-SQLAlchemy
