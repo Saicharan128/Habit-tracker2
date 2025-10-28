@@ -40,6 +40,13 @@ class JournalEntry(db.Model):
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.now)  # Use system local time
 
+
+class IdealSelf(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    vision = db.Column(db.Text, nullable=True)
+    focus_areas = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
 def ensure_schema():
     # Lightweight migration to add columns when DB already exists
     with app.app_context():
@@ -283,6 +290,40 @@ def habit_progress(habit_id):
         'dates': dates,
         'ideal': ideal_cum,
         'actual': actual_cum,
+    })
+
+
+@app.route('/api/idealself', methods=['GET', 'POST'])
+def ideal_self_profile():
+    profile = IdealSelf.query.order_by(IdealSelf.created_at.desc()).first()
+    if request.method == 'POST':
+        payload = request.json or {}
+        vision = (payload.get('vision') or '').strip()
+        focus_areas = payload.get('focus_areas') or []
+        if isinstance(focus_areas, str):
+            focus_areas = [focus_areas]
+        focus_clean = ','.join([item.strip() for item in focus_areas if item and item.strip()])
+
+        if profile is None:
+            profile = IdealSelf(vision=vision, focus_areas=focus_clean)
+            db.session.add(profile)
+        else:
+            profile.vision = vision
+            profile.focus_areas = focus_clean
+            profile.created_at = datetime.now()
+            db.session.add(profile)
+        db.session.commit()
+
+    if profile is None:
+        return jsonify({
+            'vision': '',
+            'focus_areas': []
+        })
+
+    focus_list = [item.strip() for item in (profile.focus_areas or '').split(',') if item.strip()]
+    return jsonify({
+        'vision': profile.vision or '',
+        'focus_areas': focus_list
     })
 
 @app.route('/api/journal', methods=['GET', 'POST'])
