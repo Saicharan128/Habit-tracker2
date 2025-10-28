@@ -2,6 +2,32 @@ let habitChart = null;
 let currentHabitId = null;
 let currentRange = 30;
 const chartRanges = [7, 14, 30, 90];
+const DEFAULT_CHART_MESSAGE = 'Add a habit to see its ideal vs actual progress.';
+
+function updateChartVisibility(state, message = '') {
+    const canvas = document.getElementById('habitChart');
+    const placeholder = document.getElementById('chartEmptyState');
+    if (!canvas || !placeholder) return;
+    if (message) {
+        placeholder.textContent = message;
+    }
+    placeholder.dataset.state = state;
+    placeholder.setAttribute('aria-hidden', state === 'ready' ? 'true' : 'false');
+    if (state === 'ready') {
+        placeholder.classList.add('hidden');
+        canvas.style.display = 'block';
+        canvas.removeAttribute('aria-hidden');
+        return;
+    }
+
+    placeholder.classList.remove('hidden');
+    canvas.style.display = 'none';
+    canvas.setAttribute('aria-hidden', 'true');
+    if ((state === 'empty' || state === 'error') && habitChart) {
+        habitChart.destroy();
+        habitChart = null;
+    }
+}
 
 function showToast(message, tone = 'info') {
     const container = document.getElementById('toastContainer');
@@ -101,6 +127,13 @@ async function loadJournalEntries() {
         entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         const list = document.getElementById('journalEntries');
         list.innerHTML = '';
+        if (!entries.length) {
+            const empty = document.createElement('li');
+            empty.className = 'empty-state';
+            empty.textContent = 'No journal entries yet. Capture a reflection to start building insights.';
+            list.appendChild(empty);
+            return;
+        }
         entries.forEach(entry => {
             const li = document.createElement('li');
             li.className = 'journal-entry';
@@ -114,6 +147,7 @@ async function loadJournalEntries() {
         });
     } catch (err) {
         console.error(err);
+        showToast('Could not load journal entries', 'error');
     }
 }
 
@@ -159,6 +193,9 @@ function renderHabits(habits) {
     const list = document.getElementById('habitList');
     list.innerHTML = '';
     if (!habits.length) {
+        const empty = document.createElement('li');
+        empty.className = 'empty-state';
+        empty.innerHTML = `<strong>No habits yet.</strong><p style="margin-top:8px;">Translate the ideal self into a measurable commitment to track.</p>`;
         const empty = document.createElement('p');
         empty.textContent = 'No habits yet. Translate the ideal self into a measurable commitment.';
         empty.style.color = 'var(--text-secondary)';
@@ -184,6 +221,16 @@ function renderHabits(habits) {
 
         const meta = document.createElement('div');
         meta.className = 'habit-meta';
+        const safeTarget = Number.isFinite(habit.target_per_week) && habit.target_per_week > 0
+            ? habit.target_per_week
+            : 7;
+        const safeStreak = Number.isFinite(habit.streak) && habit.streak >= 0 ? habit.streak : 0;
+        const safeBest = Number.isFinite(habit.best_streak) && habit.best_streak >= 0 ? habit.best_streak : 0;
+        const safeScore = Number.isFinite(habit.score) ? habit.score : 0;
+        meta.innerHTML = `
+            Target: ${safeTarget}/week
+            · Streak: ${safeStreak} (best ${safeBest})
+            · Lifetime score: ${safeScore.toFixed(1)}%
         meta.innerHTML = `
             Target: ${habit.target_per_week}/week
             · Streak: ${habit.streak} (best ${habit.best_streak})
@@ -195,6 +242,12 @@ function renderHabits(habits) {
         progress.className = 'habit-progress';
         const idealBar = document.createElement('div');
         idealBar.className = 'ideal';
+        const idealRatio = Math.min(1, Math.max(0, safeTarget / 7));
+        idealBar.style.width = `${Math.round(idealRatio * 100)}%`;
+        const actualBar = document.createElement('div');
+        actualBar.className = 'actual';
+        const actualWidth = Math.min(100, Math.max(0, Math.round(safeScore)));
+        actualBar.style.width = `${actualWidth}%`;
         idealBar.style.width = `${Math.min(100, Math.round((habit.target_per_week / 7) * 100))}%`;
         const actualBar = document.createElement('div');
         actualBar.className = 'actual';
@@ -257,6 +310,7 @@ function updateHabitSelectOptions(habits) {
         select.appendChild(option);
         currentHabitId = null;
     }
+    select.disabled = habits.length === 0;
 }
 
 async function loadHabits() {
@@ -266,6 +320,15 @@ async function loadHabits() {
         const habits = await res.json();
         renderHabits(habits);
         updateHabitSelectOptions(habits);
+        setupRangeButtons();
+        if (currentHabitId) {
+            await loadHabitProgress();
+        } else {
+            updateChartVisibility('empty', DEFAULT_CHART_MESSAGE);
+        }
+    } catch (err) {
+        console.error(err);
+        showToast('Could not load habits', 'error');
         if (currentHabitId) {
             await loadHabitProgress();
         } else {
@@ -281,11 +344,17 @@ async function loadHabits() {
 
 async function loadHabitProgress() {
     if (!currentHabitId) return;
+    updateChartVisibility('loading', 'Loading progress…');
     try {
         const res = await fetch(`/api/habits/${currentHabitId}/progress?days=${currentRange}`);
         if (!res.ok) throw new Error('Failed to fetch progress');
         const data = await res.json();
         const ctx = document.getElementById('habitChart').getContext('2d');
+        if (typeof Chart === 'undefined') {
+            updateChartVisibility('error', 'Progress chart unavailable because Chart.js failed to load.');
+            showToast('Progress chart unavailable right now', 'error');
+            return;
+        }
         if (habitChart) habitChart.destroy();
         habitChart = new Chart(ctx, {
             type: 'line',
@@ -336,6 +405,11 @@ async function loadHabitProgress() {
                 }
             }
         });
+        updateChartVisibility('ready');
+    } catch (err) {
+        console.error(err);
+        updateChartVisibility('error', 'Could not load progress right now.');
+        showToast('Could not load progress', 'error');
     } catch (err) {
         console.error(err);
     }
@@ -346,6 +420,10 @@ function setupRangeButtons() {
     container.innerHTML = '';
     chartRanges.forEach(range => {
         const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = `${range} days`;
+        if (range === currentRange && currentHabitId) btn.classList.add('active');
+        btn.disabled = !currentHabitId;
         btn.textContent = `${range} days`;
         if (range === currentRange) btn.classList.add('active');
         btn.addEventListener('click', () => {
@@ -375,6 +453,7 @@ function setupNavigation() {
 document.addEventListener('DOMContentLoaded', () => {
     setupNavigation();
     setupRangeButtons();
+    updateChartVisibility('empty', DEFAULT_CHART_MESSAGE);
     loadIdealSelf();
     loadHabits();
     loadJournalEntries();
@@ -383,6 +462,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('journalForm').addEventListener('submit', addJournalEntry);
     document.getElementById('habitForm').addEventListener('submit', addHabit);
     document.getElementById('habitSelect').addEventListener('change', (event) => {
+        const nextId = parseInt(event.target.value, 10);
+        if (!Number.isNaN(nextId)) {
+            currentHabitId = nextId;
+            loadHabitProgress();
+        }
         currentHabitId = parseInt(event.target.value, 10);
         loadHabitProgress();
     });
