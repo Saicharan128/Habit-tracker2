@@ -42,6 +42,9 @@ a:hover {
 
 header {
     padding: 28px 5vw 10px;
+    max-width: clamp(980px, 92vw, 1400px);
+    margin: 0 auto;
+    width: 100%;
 }
 
 .branding {
@@ -96,6 +99,8 @@ nav.primary-nav button:hover {
 main {
     flex: 1;
     padding: 0 5vw 60px;
+    max-width: clamp(980px, 92vw, 1400px);
+    margin: 0 auto;
 }
 
 .section-title {
@@ -138,6 +143,56 @@ main {
 .card > p {
     color: var(--text-secondary);
     margin-bottom: 16px;
+}
+
+/* Card header layout for better structure */
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.card-titles .card-title {
+    margin: 0;
+}
+
+.card-titles .card-subtitle {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.muted { color: var(--text-secondary); font-size: 0.85rem; }
+
+/* Chart card enhancements */
+.chart-card { gap: 12px; }
+
+.chart-toolbar { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.chart-toolbar .toolbar-group { display: flex; align-items: center; gap: 8px; }
+.chart-toolbar select { min-width: 180px; }
+
+.range-buttons { display: flex; gap: 8px; }
+.range-buttons button {
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(93, 208, 255, 0.3);
+    background: rgba(93, 208, 255, 0.1);
+    color: var(--text-primary);
+}
+.range-buttons button.active,
+.range-buttons button:hover { background: rgba(93, 208, 255, 0.22); }
+
+.chart-body { margin-top: 6px; }
+.chart-placeholder {
+    border: 1px dashed rgba(93, 208, 255, 0.25);
+    border-radius: var(--radius-md);
+    padding: 28px;
+    text-align: center;
+    color: var(--text-secondary);
+    background: rgba(10, 15, 30, 0.55);
 }
 
 form.form-stack {
@@ -338,6 +393,27 @@ button.ghost:hover {
     margin-top: 16px;
 }
 
+/* Journal chart block */
+.journal-card .journal-chart { margin-top: 6px; }
+.journal-card canvas { width: 100%; height: 140px; }
+#journalChart[aria-hidden="true"] { display: none; }
+
+/* Laptop-friendly grids */
+#top-grid { align-items: start; }
+#bottom-grid { align-items: start; }
+
+@media (min-width: 1024px) {
+  #bottom-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+}
+
+@media (min-width: 1280px) {
+  #bottom-grid { grid-template-columns: 2.2fr 1fr; }
+}
+
+@media (max-width: 1023px) {
+  #bottom-grid { grid-template-columns: 1fr; }
+}
+
 .journal-entry {
     background: var(--surface);
     border-radius: var(--radius-md);
@@ -352,10 +428,42 @@ button.ghost:hover {
     margin-bottom: 8px;
 }
 
+/* Journal content clamp + toggle */
+.journal-entry .content {
+    position: relative;
+    max-height: 84px;
+    overflow: hidden;
+    line-height: 1.6;
+}
+.journal-entry .content::after {
+    content: "";
+    position: absolute;
+    bottom: 0; left: 0; right: 0; height: 36px;
+    background: linear-gradient(180deg, rgba(17,26,47,0) 0%, rgba(17,26,47,0.9) 100%);
+    pointer-events: none;
+}
+.journal-entry.expanded .content { max-height: none; }
+.journal-entry.expanded .content::after { display: none; }
+.journal-entry .toggle {
+    margin-top: 10px;
+    background: transparent;
+    color: var(--accent);
+    border: 0;
+    cursor: pointer;
+    font-weight: 600;
+}
+
 .chart-card {
     display: flex;
     flex-direction: column;
     gap: 18px;
+}
+
+/* Chart sizing + initial visibility */
+.chart-card canvas { width: 100%; height: 220px; }
+
+#habitChart[aria-hidden="true"] {
+    display: none;
 }
 
 .chart-controls {
