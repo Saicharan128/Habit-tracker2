@@ -1,6 +1,87 @@
 import json
 import sqlite3
 from datetime import datetime, date, timedelta
+from http import HTTPStatus
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from functools import partial
+from urllib.parse import parse_qs, urlparse
+
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = BASE_DIR / 'templates'
+DB_PATH = BASE_DIR / 'habits_journal.db'
+DEFAULT_COLOR = '#000000'
+
+
+def _connect():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
+    return conn
+
+
+def _ensure_schema():
+    conn = _connect()
+    try:
+        conn.execute(
+            'CREATE TABLE IF NOT EXISTS habit ('
+            'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+            'name TEXT NOT NULL,'
+            'score REAL NOT NULL DEFAULT 0.0,'
+            'completed_days INTEGER NOT NULL DEFAULT 0,'
+            'created_at TEXT NOT NULL,'
+            'completed INTEGER NOT NULL DEFAULT 0,'
+            'streak INTEGER NOT NULL DEFAULT 0,'
+            'best_streak INTEGER NOT NULL DEFAULT 0,'
+            'color TEXT NOT NULL DEFAULT "#000000",'
+            'last_completed TEXT,'
+            'target_per_week INTEGER NOT NULL DEFAULT 7'
+            ')'
+        )
+        conn.execute(
+            'CREATE TABLE IF NOT EXISTS habit_log ('
+            'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+            'habit_id INTEGER NOT NULL,'
+            'day TEXT NOT NULL,'
+            'created_at TEXT NOT NULL,'
+            'UNIQUE(habit_id, day),'
+            'FOREIGN KEY(habit_id) REFERENCES habit(id) ON DELETE CASCADE'
+            ')'
+        )
+        conn.execute(
+            'CREATE TABLE IF NOT EXISTS journal_entry ('
+            'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+            'content TEXT NOT NULL,'
+            'timestamp TEXT NOT NULL'
+            ')'
+        )
+        conn.execute(
+            'CREATE TABLE IF NOT EXISTS ideal_self ('
+            'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+            'vision TEXT,'
+            'focus_areas TEXT,'
+            'created_at TEXT NOT NULL'
+            ')'
+        )
+
+        # Lightweight migrations for legacy databases.
+        existing = {row['name'] for row in conn.execute('PRAGMA table_info(habit)')}
+        if 'target_per_week' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN target_per_week INTEGER NOT NULL DEFAULT 7')
+        if 'color' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN color TEXT NOT NULL DEFAULT "#000000"')
+        if 'last_completed' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN last_completed TEXT')
+        if 'best_streak' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN best_streak INTEGER NOT NULL DEFAULT 0')
+        if 'streak' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN streak INTEGER NOT NULL DEFAULT 0')
+        if 'completed' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN completed INTEGER NOT NULL DEFAULT 0')
+        if 'completed_days' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN completed_days INTEGER NOT NULL DEFAULT 0')
+        if 'score' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN score REAL NOT NULL DEFAULT 0.0')
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
@@ -509,6 +590,8 @@ def run(port=8010):
             print('\nShutting down server...')
 
 
+if __name__ == '__main__':
+    run()
     dates = []
     actual_cum = []
     ideal_cum = []

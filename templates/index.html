@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -21,6 +22,7 @@
                     Capture the story, track the habits, and let Atom understand what truly drives them.
                 </p>
             </div>
+            <img src="/static/img/Forward_logo.png" alt="Atom logo">
             <img src="{{ url_for('static', filename='img/Forward_logo.png') }}" alt="Atom logo">
         </div>
         <nav class="primary-nav">
@@ -133,6 +135,7 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
+    <script src="/static/js/app.js" defer></script>
     <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 </body>
 </html>
