@@ -1,16 +1,17 @@
+// State
 let habitChart = null;
+let journalChart = null;
 let currentHabitId = null;
 let currentRange = 30;
 const chartRanges = [7, 14, 30, 90];
 const DEFAULT_CHART_MESSAGE = 'Add a habit to see its ideal vs actual progress.';
 
+// Helpers
 function updateChartVisibility(state, message = '') {
     const canvas = document.getElementById('habitChart');
     const placeholder = document.getElementById('chartEmptyState');
     if (!canvas || !placeholder) return;
-    if (message) {
-        placeholder.textContent = message;
-    }
+    if (message) placeholder.textContent = message;
     placeholder.dataset.state = state;
     placeholder.setAttribute('aria-hidden', state === 'ready' ? 'true' : 'false');
     if (state === 'ready') {
@@ -19,7 +20,6 @@ function updateChartVisibility(state, message = '') {
         canvas.removeAttribute('aria-hidden');
         return;
     }
-
     placeholder.classList.remove('hidden');
     canvas.style.display = 'none';
     canvas.setAttribute('aria-hidden', 'true');
@@ -34,9 +34,7 @@ function showToast(message, tone = 'info') {
     if (!container) return;
     const toast = document.createElement('div');
     toast.className = 'toast';
-    if (tone !== 'info') {
-        toast.classList.add(tone);
-    }
+    if (tone !== 'info') toast.classList.add(tone);
     toast.textContent = message;
     container.appendChild(toast);
     setTimeout(() => {
@@ -45,6 +43,7 @@ function showToast(message, tone = 'info') {
     }, 3200);
 }
 
+// Ideal self
 async function loadIdealSelf() {
     try {
         const response = await fetch('/api/idealself');
@@ -73,9 +72,7 @@ function renderIdealSelfSummary(vision, focusAreas) {
     }
     summary.style.display = 'block';
     visionCopy.textContent = vision || '';
-    focusCopy.textContent = focusAreas && focusAreas.length
-        ? `Focus areas: ${focusAreas.join(' · ')}`
-        : '';
+    focusCopy.textContent = focusAreas && focusAreas.length ? `Focus areas: ${focusAreas.join(' • ')}` : '';
 }
 
 async function saveIdealSelf(event) {
@@ -98,6 +95,7 @@ async function saveIdealSelf(event) {
     }
 }
 
+// Journal
 async function addJournalEntry(event) {
     event.preventDefault();
     const textarea = document.getElementById('journalInput');
@@ -137,20 +135,121 @@ async function loadJournalEntries() {
         entries.forEach(entry => {
             const li = document.createElement('li');
             li.className = 'journal-entry';
+
             const time = document.createElement('time');
             time.textContent = new Date(entry.timestamp).toLocaleString();
+
+            const contentWrap = document.createElement('div');
+            contentWrap.className = 'content';
             const content = document.createElement('p');
             content.textContent = entry.content;
+            contentWrap.appendChild(content);
+
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'toggle';
+            toggle.textContent = 'Expand';
+            toggle.addEventListener('click', () => {
+                li.classList.toggle('expanded');
+                toggle.textContent = li.classList.contains('expanded') ? 'Collapse' : 'Expand';
+            });
+
             li.appendChild(time);
-            li.appendChild(content);
+            li.appendChild(contentWrap);
+            li.appendChild(toggle);
             list.appendChild(li);
         });
+
+        // Render the journal histogram (last 30 days)
+        renderJournalChart(entries);
     } catch (err) {
         console.error(err);
         showToast('Could not load journal entries', 'error');
     }
 }
 
+function updateJournalChartVisibility(state, message = '') {
+    const canvas = document.getElementById('journalChart');
+    const placeholder = document.getElementById('journalChartEmpty');
+    if (!canvas || !placeholder) return;
+    if (message) placeholder.textContent = message;
+    placeholder.dataset.state = state;
+    placeholder.setAttribute('aria-hidden', state === 'ready' ? 'true' : 'false');
+    if (state === 'ready') {
+        placeholder.classList.add('hidden');
+        canvas.style.display = 'block';
+        canvas.removeAttribute('aria-hidden');
+        return;
+    }
+    placeholder.classList.remove('hidden');
+    canvas.style.display = 'none';
+    canvas.setAttribute('aria-hidden', 'true');
+    if ((state === 'empty' || state === 'error') && journalChart) {
+        journalChart.destroy();
+        journalChart = null;
+    }
+}
+
+function renderJournalChart(entries) {
+    const days = 30;
+    // Build day labels for last N days
+    const today = new Date();
+    const labels = [];
+    const counts = [];
+    const map = new Map();
+    entries.forEach(e => {
+        const d = new Date(e.timestamp);
+        const key = d.toISOString().slice(0, 10);
+        map.set(key, (map.get(key) || 0) + 1);
+    });
+    for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        labels.push(key.slice(5)); // MM-DD for compactness
+        counts.push(map.get(key) || 0);
+    }
+
+    const hasData = counts.some(c => c > 0);
+    if (!hasData) {
+        updateJournalChartVisibility('empty', 'No entries in the last 30 days.');
+        return;
+    }
+    if (typeof Chart === 'undefined') {
+        updateJournalChartVisibility('error', 'Chart unavailable (Chart.js failed to load).');
+        return;
+    }
+    const ctx = document.getElementById('journalChart').getContext('2d');
+    if (journalChart) journalChart.destroy();
+    journalChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Entries',
+                data: counts,
+                backgroundColor: 'rgba(93, 208, 255, 0.35)',
+                borderColor: '#5dd0ff',
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#d9e1ff' } },
+                title: { display: true, text: 'Journal entries — last 30 days', color: '#f5f8ff' }
+            },
+            scales: {
+                x: { ticks: { color: '#8fa0c7', maxRotation: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                y: { ticks: { color: '#8fa0c7', precision: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } }
+            }
+        }
+    });
+    updateJournalChartVisibility('ready');
+}
+
+// Habits
 async function addHabit(event) {
     event.preventDefault();
     const name = document.getElementById('habitName').value.trim();
@@ -164,10 +263,13 @@ async function addHabit(event) {
             body: JSON.stringify({ name, color, target_per_week: targetPerWeek })
         });
         if (!res.ok) throw new Error('Failed to add habit');
+        const created = await res.json();
+        currentHabitId = created && created.id ? created.id : currentHabitId;
         document.getElementById('habitForm').reset();
         document.getElementById('habitColor').value = '#2f7cff';
         showToast('Habit added', 'success');
         await loadHabits();
+        if (currentHabitId) await loadHabitProgress();
     } catch (err) {
         console.error(err);
         showToast('Could not add habit', 'error');
@@ -183,6 +285,9 @@ async function toggleHabitCompletion(habit) {
         });
         if (!res.ok) throw new Error('Failed to update habit');
         await loadHabits();
+        if (currentHabitId === habit.id) {
+            await loadHabitProgress();
+        }
     } catch (err) {
         console.error(err);
         showToast('Could not update habit', 'error');
@@ -193,13 +298,11 @@ function renderHabits(habits) {
     const list = document.getElementById('habitList');
     list.innerHTML = '';
     if (!habits.length) {
-        const empty = document.createElement('li');
-        empty.className = 'empty-state';
-        empty.innerHTML = `<strong>No habits yet.</strong><p style="margin-top:8px;">Translate the ideal self into a measurable commitment to track.</p>`;
-        const empty = document.createElement('p');
-        empty.textContent = 'No habits yet. Translate the ideal self into a measurable commitment.';
-        empty.style.color = 'var(--text-secondary)';
-        list.appendChild(empty);
+        const li = document.createElement('li');
+        li.className = 'empty-state';
+        li.innerHTML = `<strong>No habits yet.</strong><p style="margin-top:8px;">Translate the ideal self into a measurable commitment to track.</p>`;
+        list.appendChild(li);
+        updateChartVisibility('empty', DEFAULT_CHART_MESSAGE);
         return;
     }
     habits.forEach(habit => {
@@ -221,21 +324,11 @@ function renderHabits(habits) {
 
         const meta = document.createElement('div');
         meta.className = 'habit-meta';
-        const safeTarget = Number.isFinite(habit.target_per_week) && habit.target_per_week > 0
-            ? habit.target_per_week
-            : 7;
+        const safeTarget = Number.isFinite(habit.target_per_week) && habit.target_per_week > 0 ? habit.target_per_week : 7;
         const safeStreak = Number.isFinite(habit.streak) && habit.streak >= 0 ? habit.streak : 0;
         const safeBest = Number.isFinite(habit.best_streak) && habit.best_streak >= 0 ? habit.best_streak : 0;
         const safeScore = Number.isFinite(habit.score) ? habit.score : 0;
-        meta.innerHTML = `
-            Target: ${safeTarget}/week
-            · Streak: ${safeStreak} (best ${safeBest})
-            · Lifetime score: ${safeScore.toFixed(1)}%
-        meta.innerHTML = `
-            Target: ${habit.target_per_week}/week
-            · Streak: ${habit.streak} (best ${habit.best_streak})
-            · Lifetime score: ${habit.score.toFixed(1)}%
-        `;
+        meta.innerHTML = `Target: ${safeTarget}/week • Streak: ${safeStreak} (best ${safeBest}) • Lifetime score: ${safeScore.toFixed(1)}%`;
         li.appendChild(meta);
 
         const progress = document.createElement('div');
@@ -248,10 +341,6 @@ function renderHabits(habits) {
         actualBar.className = 'actual';
         const actualWidth = Math.min(100, Math.max(0, Math.round(safeScore)));
         actualBar.style.width = `${actualWidth}%`;
-        idealBar.style.width = `${Math.min(100, Math.round((habit.target_per_week / 7) * 100))}%`;
-        const actualBar = document.createElement('div');
-        actualBar.className = 'actual';
-        actualBar.style.width = `${Math.min(100, Math.round(habit.score))}%`;
         actualBar.style.background = `linear-gradient(90deg, ${habit.color || '#54e0a6'}, rgba(84, 224, 166, 0.35))`;
         progress.appendChild(idealBar);
         progress.appendChild(actualBar);
@@ -301,8 +390,7 @@ function updateHabitSelectOptions(habits) {
             currentHabitId = habits[0].id;
             select.value = String(currentHabitId);
         }
-    }
-    if (!habits.length) {
+    } else {
         const option = document.createElement('option');
         option.textContent = 'No habits yet';
         option.disabled = true;
@@ -329,16 +417,7 @@ async function loadHabits() {
     } catch (err) {
         console.error(err);
         showToast('Could not load habits', 'error');
-        if (currentHabitId) {
-            await loadHabitProgress();
-        } else {
-            if (habitChart) {
-                habitChart.destroy();
-                habitChart = null;
-            }
-        }
-    } catch (err) {
-        console.error(err);
+        updateChartVisibility('error', 'Could not load habits.');
     }
 }
 
@@ -367,6 +446,8 @@ async function loadHabitProgress() {
                         borderColor: '#5dd0ff',
                         backgroundColor: 'rgba(93, 208, 255, 0.18)',
                         borderWidth: 2,
+                        pointRadius: 2,
+                        pointHoverRadius: 4,
                         tension: 0.25
                     },
                     {
@@ -374,7 +455,9 @@ async function loadHabitProgress() {
                         data: data.actual,
                         borderColor: data.habit.color || '#54e0a6',
                         backgroundColor: 'rgba(84, 224, 166, 0.22)',
-                        borderWidth: 2,
+                        borderWidth: 3,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
                         tension: 0.25
                     }
                 ]
@@ -383,9 +466,7 @@ async function loadHabitProgress() {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: {
-                        labels: { color: '#d9e1ff' }
-                    },
+                    legend: { labels: { color: '#d9e1ff' } },
                     title: {
                         display: true,
                         text: `${data.habit.name} (${data.habit.target_per_week}/week ideal)`,
@@ -394,14 +475,8 @@ async function loadHabitProgress() {
                     }
                 },
                 scales: {
-                    x: {
-                        ticks: { color: '#8fa0c7' },
-                        grid: { color: 'rgba(255, 255, 255, 0.06)' }
-                    },
-                    y: {
-                        ticks: { color: '#8fa0c7' },
-                        grid: { color: 'rgba(255, 255, 255, 0.06)' }
-                    }
+                    x: { ticks: { color: '#8fa0c7' }, grid: { color: 'rgba(255, 255, 255, 0.06)' } },
+                    y: { ticks: { color: '#8fa0c7' }, grid: { color: 'rgba(255, 255, 255, 0.06)' } }
                 }
             }
         });
@@ -410,8 +485,6 @@ async function loadHabitProgress() {
         console.error(err);
         updateChartVisibility('error', 'Could not load progress right now.');
         showToast('Could not load progress', 'error');
-    } catch (err) {
-        console.error(err);
     }
 }
 
@@ -422,10 +495,8 @@ function setupRangeButtons() {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.textContent = `${range} days`;
-        if (range === currentRange && currentHabitId) btn.classList.add('active');
-        btn.disabled = !currentHabitId;
-        btn.textContent = `${range} days`;
         if (range === currentRange) btn.classList.add('active');
+        btn.disabled = !currentHabitId;
         btn.addEventListener('click', () => {
             currentRange = range;
             setupRangeButtons();
@@ -450,6 +521,7 @@ function setupNavigation() {
     if (navButtons.length) navButtons[0].classList.add('active');
 }
 
+// Init
 document.addEventListener('DOMContentLoaded', () => {
     setupNavigation();
     setupRangeButtons();
@@ -467,7 +539,5 @@ document.addEventListener('DOMContentLoaded', () => {
             currentHabitId = nextId;
             loadHabitProgress();
         }
-        currentHabitId = parseInt(event.target.value, 10);
-        loadHabitProgress();
     });
 });
