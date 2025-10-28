@@ -11,6 +11,8 @@ BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / 'templates'
 DB_PATH = BASE_DIR / 'habits_journal.db'
 DEFAULT_COLOR = '#000000'
+MIN_TARGET = 1
+MAX_TARGET = 21
 
 
 def _connect():
@@ -18,6 +20,18 @@ def _connect():
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys = ON')
     return conn
+
+
+def _sanitize_target(value, default=7):
+    try:
+        target = int(value)
+    except (TypeError, ValueError):
+        return default
+    if target < MIN_TARGET:
+        return MIN_TARGET
+    if target > MAX_TARGET:
+        return MAX_TARGET
+    return target
 
 
 def _ensure_schema():
@@ -62,6 +76,30 @@ def _ensure_schema():
             'focus_areas TEXT,'
             'created_at TEXT NOT NULL'
             ')'
+        )
+
+        # Lightweight migrations for legacy databases.
+        existing = {row['name'] for row in conn.execute('PRAGMA table_info(habit)')}
+        if 'target_per_week' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN target_per_week INTEGER NOT NULL DEFAULT 7')
+        if 'color' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN color TEXT NOT NULL DEFAULT "#000000"')
+        if 'last_completed' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN last_completed TEXT')
+        if 'best_streak' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN best_streak INTEGER NOT NULL DEFAULT 0')
+        if 'streak' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN streak INTEGER NOT NULL DEFAULT 0')
+        if 'completed' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN completed INTEGER NOT NULL DEFAULT 0')
+        if 'completed_days' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN completed_days INTEGER NOT NULL DEFAULT 0')
+        if 'score' not in existing:
+            conn.execute('ALTER TABLE habit ADD COLUMN score REAL NOT NULL DEFAULT 0.0')
+
+        conn.execute(
+            'UPDATE habit SET target_per_week = ? WHERE target_per_week IS NULL OR target_per_week < ? OR target_per_week > ?',
+            (7, MIN_TARGET, MAX_TARGET),
         )
 
         # Lightweight migrations for legacy databases.
@@ -197,6 +235,7 @@ def _compute_habit_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         'streak': current,
         'best_streak': max(best, row['best_streak'] or 0),
         'color': row['color'] or DEFAULT_COLOR,
+        'target_per_week': _sanitize_target(row['target_per_week'], 7),
         'target_per_week': row['target_per_week'] or 7,
         'last_completed': last_completed.isoformat() if last_completed else None
     }
@@ -313,6 +352,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.BAD_REQUEST, 'Habit name is required')
             return
         color = payload.get('color') or DEFAULT_COLOR
+        target = _sanitize_target(payload.get('target_per_week', 7))
         try:
             target = int(payload.get('target_per_week', 7))
         except (TypeError, ValueError):
@@ -343,6 +383,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
+            habit_id = int(parts[2])
             habit_id = int(parts[1])
         except ValueError:
             self.send_error(HTTPStatus.BAD_REQUEST, 'Invalid habit id')
@@ -365,6 +406,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 updates.append('color = ?')
                 params.append(payload['color'] or DEFAULT_COLOR)
             if 'target_per_week' in payload:
+                params.append(_sanitize_target(payload['target_per_week'], row['target_per_week']))
                 try:
                     params.append(int(payload['target_per_week']))
                 except (TypeError, ValueError):
@@ -402,6 +444,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
+            habit_id = int(parts[2])
             habit_id = int(parts[1])
         except ValueError:
             self.send_error(HTTPStatus.BAD_REQUEST, 'Invalid habit id')
@@ -542,6 +585,56 @@ class AppHandler(SimpleHTTPRequestHandler):
             }, status=HTTPStatus.CREATED)
         finally:
             conn.close()
+
+    def _get_ideal_self(self):
+        conn = _connect()
+        try:
+            row = conn.execute(
+                'SELECT vision, focus_areas FROM ideal_self ORDER BY datetime(created_at) DESC LIMIT 1'
+            ).fetchone()
+            if row is None:
+                self._respond_json({'vision': '', 'focus_areas': []})
+                return
+            focus = [item.strip() for item in (row['focus_areas'] or '').split(',') if item.strip()]
+            self._respond_json({'vision': row['vision'] or '', 'focus_areas': focus})
+        finally:
+            conn.close()
+
+    def _save_ideal_self(self):
+        try:
+            payload = self._read_json()
+        except json.JSONDecodeError:
+            return
+        vision = (payload.get('vision') or '').strip()
+        focus_areas = payload.get('focus_areas') or []
+        if isinstance(focus_areas, str):
+            focus_areas = [focus_areas]
+        focus_clean = ','.join(item.strip() for item in focus_areas if item and item.strip())
+        conn = _connect()
+        try:
+            conn.execute(
+                'INSERT INTO ideal_self (vision, focus_areas, created_at) VALUES (?, ?, ?)',
+                (vision, focus_clean, datetime.now().isoformat())
+            )
+            conn.commit()
+            self._respond_json({'vision': vision, 'focus_areas': focus_clean.split(',') if focus_clean else []})
+        finally:
+            conn.close()
+
+
+def run(port=8010):
+    _ensure_schema()
+    handler = partial(AppHandler, directory=str(BASE_DIR))
+    with ThreadingHTTPServer(('0.0.0.0', port), handler) as httpd:
+        print(f"Serving on http://0.0.0.0:{port}")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print('\nShutting down server...')
+
+
+if __name__ == '__main__':
+    run()
 
     def _get_ideal_self(self):
         conn = _connect()
