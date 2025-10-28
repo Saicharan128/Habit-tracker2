@@ -16,7 +16,7 @@ MAX_TARGET = 21
 
 
 def _connect():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys = ON')
     return conn
@@ -78,7 +78,7 @@ def _ensure_schema():
             ')'
         )
 
-        # Lightweight migrations for legacy databases.
+        # Lightweight migrations
         existing = {row['name'] for row in conn.execute('PRAGMA table_info(habit)')}
         if 'target_per_week' not in existing:
             conn.execute('ALTER TABLE habit ADD COLUMN target_per_week INTEGER NOT NULL DEFAULT 7')
@@ -98,87 +98,10 @@ def _ensure_schema():
             conn.execute('ALTER TABLE habit ADD COLUMN score REAL NOT NULL DEFAULT 0.0')
 
         conn.execute(
-            'UPDATE habit SET target_per_week = ? WHERE target_per_week IS NULL OR target_per_week < ? OR target_per_week > ?',
+            'UPDATE habit SET target_per_week = ? '
+            'WHERE target_per_week IS NULL OR target_per_week < ? OR target_per_week > ?',
             (7, MIN_TARGET, MAX_TARGET),
         )
-
-        # Lightweight migrations for legacy databases.
-        existing = {row['name'] for row in conn.execute('PRAGMA table_info(habit)')}
-        if 'target_per_week' not in existing:
-            conn.execute('ALTER TABLE habit ADD COLUMN target_per_week INTEGER NOT NULL DEFAULT 7')
-        if 'color' not in existing:
-            conn.execute('ALTER TABLE habit ADD COLUMN color TEXT NOT NULL DEFAULT "#000000"')
-        if 'last_completed' not in existing:
-            conn.execute('ALTER TABLE habit ADD COLUMN last_completed TEXT')
-        if 'best_streak' not in existing:
-            conn.execute('ALTER TABLE habit ADD COLUMN best_streak INTEGER NOT NULL DEFAULT 0')
-        if 'streak' not in existing:
-            conn.execute('ALTER TABLE habit ADD COLUMN streak INTEGER NOT NULL DEFAULT 0')
-        if 'completed' not in existing:
-            conn.execute('ALTER TABLE habit ADD COLUMN completed INTEGER NOT NULL DEFAULT 0')
-        if 'completed_days' not in existing:
-            conn.execute('ALTER TABLE habit ADD COLUMN completed_days INTEGER NOT NULL DEFAULT 0')
-        if 'score' not in existing:
-            conn.execute('ALTER TABLE habit ADD COLUMN score REAL NOT NULL DEFAULT 0.0')
-from flask_sqlalchemy import SQLAlchemy
-
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///habits_journal.db'  # SQLite database file
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-
-# Define Habit model
-class Habit(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    score = db.Column(db.Float, default=0.0)
-    completed_days = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.now)  # Use system local time
-    completed = db.Column(db.Boolean, default=False)
-    streak = db.Column(db.Integer, default=0)
-    best_streak = db.Column(db.Integer, default=0)
-    color = db.Column(db.String(7), default='#000000')  # Default color is black
-    last_completed = db.Column(db.DateTime, nullable=True)
-    # Ideal self target: how many completions per week (1..7)
-    target_per_week = db.Column(db.Integer, default=7)
-
-
-class HabitLog(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    habit_id = db.Column(db.Integer, db.ForeignKey('habit.id'), nullable=False)
-    # Store only the date (no time) for daily completion tracking
-    day = db.Column(db.Date, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-
-    __table_args__ = (
-        db.UniqueConstraint('habit_id', 'day', name='uq_habit_day'),
-    )
-
-# Define JournalEntry model
-class JournalEntry(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    content = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.now)  # Use system local time
-
-
-class IdealSelf(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    vision = db.Column(db.Text, nullable=True)
-    focus_areas = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-
-def ensure_schema():
-    # Lightweight migration to add columns when DB already exists
-    with app.app_context():
-        conn = db.engine.connect()
-        try:
-            cols = conn.execute(db.text("PRAGMA table_info(habit)")).fetchall()
-            col_names = {c[1] for c in cols}
-            if 'target_per_week' not in col_names:
-                conn.execute(db.text("ALTER TABLE habit ADD COLUMN target_per_week INTEGER DEFAULT 7"))
-        finally:
-            conn.close()
-
         conn.commit()
     finally:
         conn.close()
@@ -236,8 +159,7 @@ def _compute_habit_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         'best_streak': max(best, row['best_streak'] or 0),
         'color': row['color'] or DEFAULT_COLOR,
         'target_per_week': _sanitize_target(row['target_per_week'], 7),
-        'target_per_week': row['target_per_week'] or 7,
-        'last_completed': last_completed.isoformat() if last_completed else None
+        'last_completed': last_completed and last_completed.isoformat(),
     }
 
     conn.execute(
@@ -258,12 +180,10 @@ def _compute_habit_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
     return payload
 
 
-
 class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory=None, **kwargs):
         super().__init__(*args, directory=directory or str(BASE_DIR), **kwargs)
 
-    # Silence the default logging noise while still allowing debug via print if needed.
     def log_message(self, format, *args):
         return
 
@@ -353,10 +273,6 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         color = payload.get('color') or DEFAULT_COLOR
         target = _sanitize_target(payload.get('target_per_week', 7))
-        try:
-            target = int(payload.get('target_per_week', 7))
-        except (TypeError, ValueError):
-            target = 7
         created_at = datetime.now().isoformat()
         conn = _connect()
         try:
@@ -367,13 +283,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             conn.commit()
             habit_id = cursor.lastrowid
             row = conn.execute('SELECT * FROM habit WHERE id = ?', (habit_id,)).fetchone()
-            habit_payload = _compute_habit_payload(conn, row)
-            self._respond_json({
-                'id': habit_payload['id'],
-                'name': habit_payload['name'],
-                'color': habit_payload['color'],
-                'target_per_week': habit_payload['target_per_week']
-            }, status=HTTPStatus.CREATED)
+            self._respond_json(_compute_habit_payload(conn, row), status=HTTPStatus.CREATED)
         finally:
             conn.close()
 
@@ -384,7 +294,6 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         try:
             habit_id = int(parts[2])
-            habit_id = int(parts[1])
         except ValueError:
             self.send_error(HTTPStatus.BAD_REQUEST, 'Invalid habit id')
             return
@@ -406,12 +315,8 @@ class AppHandler(SimpleHTTPRequestHandler):
                 updates.append('color = ?')
                 params.append(payload['color'] or DEFAULT_COLOR)
             if 'target_per_week' in payload:
-                params.append(_sanitize_target(payload['target_per_week'], row['target_per_week']))
-                try:
-                    params.append(int(payload['target_per_week']))
-                except (TypeError, ValueError):
-                    params.append(row['target_per_week'])
                 updates.append('target_per_week = ?')
+                params.append(_sanitize_target(payload['target_per_week'], row['target_per_week']))
 
             if updates:
                 params.append(habit_id)
@@ -445,7 +350,6 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         try:
             habit_id = int(parts[2])
-            habit_id = int(parts[1])
         except ValueError:
             self.send_error(HTTPStatus.BAD_REQUEST, 'Invalid habit id')
             return
@@ -488,11 +392,19 @@ class AppHandler(SimpleHTTPRequestHandler):
             actual_series = []
             ideal_series = []
             ideal_step = (row['target_per_week'] or 7) / 7.0
+
+            # Use range-relative baseline so the graph starts at 0 for the selected window
+            baseline_day = start_day - timedelta(days=1)
+            baseline = cumulative_actual.get(baseline_day, 0)
+
             current_day = start_day
             while current_day <= today:
                 dates.append(current_day.isoformat())
-                actual_series.append(cumulative_actual.get(current_day, 0))
-                delta_days = (current_day - created_day).days + 1
+                # cumulative since start_day
+                actual_value = max(0, cumulative_actual.get(current_day, 0) - baseline)
+                actual_series.append(actual_value)
+                # ideal cumulative since start_day
+                delta_days = (current_day - start_day).days + 1
                 ideal_series.append(round(max(0, delta_days) * ideal_step, 2))
                 current_day += timedelta(days=1)
 
@@ -635,156 +547,3 @@ def run(port=8010):
 
 if __name__ == '__main__':
     run()
-
-    def _get_ideal_self(self):
-        conn = _connect()
-        try:
-            row = conn.execute(
-                'SELECT vision, focus_areas FROM ideal_self ORDER BY datetime(created_at) DESC LIMIT 1'
-            ).fetchone()
-            if row is None:
-                self._respond_json({'vision': '', 'focus_areas': []})
-                return
-            focus = [item.strip() for item in (row['focus_areas'] or '').split(',') if item.strip()]
-            self._respond_json({'vision': row['vision'] or '', 'focus_areas': focus})
-        finally:
-            conn.close()
-
-    def _save_ideal_self(self):
-        try:
-            payload = self._read_json()
-        except json.JSONDecodeError:
-            return
-        vision = (payload.get('vision') or '').strip()
-        focus_areas = payload.get('focus_areas') or []
-        if isinstance(focus_areas, str):
-            focus_areas = [focus_areas]
-        focus_clean = ','.join(item.strip() for item in focus_areas if item and item.strip())
-        conn = _connect()
-        try:
-            conn.execute(
-                'INSERT INTO ideal_self (vision, focus_areas, created_at) VALUES (?, ?, ?)',
-                (vision, focus_clean, datetime.now().isoformat())
-            )
-            conn.commit()
-            self._respond_json({'vision': vision, 'focus_areas': focus_clean.split(',') if focus_clean else []})
-        finally:
-            conn.close()
-
-
-def run(port=8010):
-    _ensure_schema()
-    handler = partial(AppHandler, directory=str(BASE_DIR))
-    with ThreadingHTTPServer(('0.0.0.0', port), handler) as httpd:
-        print(f"Serving on http://0.0.0.0:{port}")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print('\nShutting down server...')
-
-
-if __name__ == '__main__':
-    run()
-    dates = []
-    actual_cum = []
-    ideal_cum = []
-
-    # For cumulative counts since creation
-    # Precompute cumulative actual counts per day
-    cumulative_actual_map = {}
-    count = 0
-    cursor = created_day
-    end_day = today
-    while cursor <= end_day:
-        if cursor in log_set:
-            count += 1
-        cumulative_actual_map[cursor] = count
-        cursor += timedelta(days=1)
-
-    ideal_step = (habit.target_per_week or 7) / 7.0
-    # Generate series for requested range (start_day..today)
-    d = start_day
-    while d <= today:
-        dates.append(d.isoformat())
-        # actual cumulative since creation up to day d
-        actual_cum.append(cumulative_actual_map.get(d, 0))
-        # ideal cumulative since creation: days since created_day inclusive * step
-        delta_days = (d - created_day).days + 1
-        ideal_cum.append(round(delta_days * ideal_step, 2))
-        d += timedelta(days=1)
-
-    return jsonify({
-        'habit': {
-            'id': habit.id,
-            'name': habit.name,
-            'target_per_week': getattr(habit, 'target_per_week', 7),
-            'color': habit.color,
-        },
-        'dates': dates,
-        'ideal': ideal_cum,
-        'actual': actual_cum,
-    })
-
-
-@app.route('/api/idealself', methods=['GET', 'POST'])
-def ideal_self_profile():
-    profile = IdealSelf.query.order_by(IdealSelf.created_at.desc()).first()
-    if request.method == 'POST':
-        payload = request.json or {}
-        vision = (payload.get('vision') or '').strip()
-        focus_areas = payload.get('focus_areas') or []
-        if isinstance(focus_areas, str):
-            focus_areas = [focus_areas]
-        focus_clean = ','.join([item.strip() for item in focus_areas if item and item.strip()])
-
-        if profile is None:
-            profile = IdealSelf(vision=vision, focus_areas=focus_clean)
-            db.session.add(profile)
-        else:
-            profile.vision = vision
-            profile.focus_areas = focus_clean
-            profile.created_at = datetime.now()
-            db.session.add(profile)
-        db.session.commit()
-
-    if profile is None:
-        return jsonify({
-            'vision': '',
-            'focus_areas': []
-        })
-
-    focus_list = [item.strip() for item in (profile.focus_areas or '').split(',') if item.strip()]
-    return jsonify({
-        'vision': profile.vision or '',
-        'focus_areas': focus_list
-    })
-
-@app.route('/api/journal', methods=['GET', 'POST'])
-def handle_journal():
-    if request.method == 'POST':
-        entry_data = request.json
-        entry = JournalEntry(content=entry_data['content'])
-        db.session.add(entry)
-        db.session.commit()
-        return jsonify({
-            'id': entry.id,
-            'content': entry.content,
-            'timestamp': entry.timestamp.isoformat()  # No conversion needed
-        }), 201
-    else:
-        entries = JournalEntry.query.all()
-        return jsonify([{
-            'id': e.id,
-            'content': e.content,
-            'timestamp': e.timestamp.isoformat()  # No conversion needed
-        } for e in entries])
-
-if __name__ == '__main__':
-    app.run(debug=False, port=8010, host='0.0.0.0')
-
-
-
-
-
-
-
