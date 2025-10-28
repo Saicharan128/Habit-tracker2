@@ -196,6 +196,9 @@ function renderHabits(habits) {
         const empty = document.createElement('li');
         empty.className = 'empty-state';
         empty.innerHTML = `<strong>No habits yet.</strong><p style="margin-top:8px;">Translate the ideal self into a measurable commitment to track.</p>`;
+        const empty = document.createElement('p');
+        empty.textContent = 'No habits yet. Translate the ideal self into a measurable commitment.';
+        empty.style.color = 'var(--text-secondary)';
         list.appendChild(empty);
         return;
     }
@@ -228,6 +231,10 @@ function renderHabits(habits) {
             Target: ${safeTarget}/week
             · Streak: ${safeStreak} (best ${safeBest})
             · Lifetime score: ${safeScore.toFixed(1)}%
+        meta.innerHTML = `
+            Target: ${habit.target_per_week}/week
+            · Streak: ${habit.streak} (best ${habit.best_streak})
+            · Lifetime score: ${habit.score.toFixed(1)}%
         `;
         li.appendChild(meta);
 
@@ -241,6 +248,10 @@ function renderHabits(habits) {
         actualBar.className = 'actual';
         const actualWidth = Math.min(100, Math.max(0, Math.round(safeScore)));
         actualBar.style.width = `${actualWidth}%`;
+        idealBar.style.width = `${Math.min(100, Math.round((habit.target_per_week / 7) * 100))}%`;
+        const actualBar = document.createElement('div');
+        actualBar.className = 'actual';
+        actualBar.style.width = `${Math.min(100, Math.round(habit.score))}%`;
         actualBar.style.background = `linear-gradient(90deg, ${habit.color || '#54e0a6'}, rgba(84, 224, 166, 0.35))`;
         progress.appendChild(idealBar);
         progress.appendChild(actualBar);
@@ -318,6 +329,16 @@ async function loadHabits() {
     } catch (err) {
         console.error(err);
         showToast('Could not load habits', 'error');
+        if (currentHabitId) {
+            await loadHabitProgress();
+        } else {
+            if (habitChart) {
+                habitChart.destroy();
+                habitChart = null;
+            }
+        }
+    } catch (err) {
+        console.error(err);
     }
 }
 
@@ -389,6 +410,8 @@ async function loadHabitProgress() {
         console.error(err);
         updateChartVisibility('error', 'Could not load progress right now.');
         showToast('Could not load progress', 'error');
+    } catch (err) {
+        console.error(err);
     }
 }
 
@@ -401,6 +424,8 @@ function setupRangeButtons() {
         btn.textContent = `${range} days`;
         if (range === currentRange && currentHabitId) btn.classList.add('active');
         btn.disabled = !currentHabitId;
+        btn.textContent = `${range} days`;
+        if (range === currentRange) btn.classList.add('active');
         btn.addEventListener('click', () => {
             currentRange = range;
             setupRangeButtons();
@@ -442,5 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentHabitId = nextId;
             loadHabitProgress();
         }
+        currentHabitId = parseInt(event.target.value, 10);
+        loadHabitProgress();
     });
 });
