@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal AI Assistant</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #001725;
+            --bg-color: #090b0c;
+            --secondary-bg: #192734;
+            --text-color: #ffffff;
+            --secondary-text: #8899A6;
+            --danger-color: #E0245E;
+        }
+        * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: monospace, sans-serif; /* Set Montserrat as the font family */
+    }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        font-family: monospace, sans-serif; /* Set Montserrat as the font family */
+            position: relative;
+            overflow-x: hidden;
+        }
+        .main-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            padding-bottom: 80px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        h1 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            text-align: center;
+        font-family: monospace, sans-serif; /* Set Montserrat as the font family */
+
+        }
+        .input-group {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        input, textarea {
+    width: 100%;
+    height: 50px;
+    padding: 5px;
+    border: 1px solid var(--secondary-bg);
+    background-color: #0d0f12;
+    color: var(--text-color);
+    border-radius: 8px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+
+        #journalInput {
+    width: 100%;           /* Make it full width */
+    height: 60vh;        /* Set a fixed height */
+    overflow-y: auto;     /* Enable vertical scrolling */
+    resize: none;         /* Disable resizing */
+    padding: 10px;        /* Optional: add some padding for better UX */
+    border-radius: 4px;   /* Optional: add some border radius */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* Optional: add a shadow for a better look */
+}
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(29, 161, 242, 0.2);
+        }
+        button {
+            appearance: button;
+  backface-visibility: hidden;
+  background-color: #405cf5;
+  border-radius: 6px;
+  border-width: 0;
+  box-shadow: rgba(50, 50, 93, .1) 0 0 0 1px inset,rgba(50, 50, 93, .1) 0 2px 5px 0,rgba(0, 0, 0, .07) 0 1px 1px 0;
+  box-sizing: border-box;
+  color: #fff;
+  cursor: pointer;
+  font-family: -apple-system,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif;
+  font-size: 100%;
+  height: 44px;
+  line-height: 1.15;
+  margin: 12px 0 0;
+  outline: none;
+  overflow: hidden;
+  padding: 0 25px;
+  position: relative;
+  text-align: center;
+  text-transform: none;
+  transform: translateZ(0);
+  transition: all .2s,box-shadow .08s ease-in;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  width: fit-content;
+        }
+        button:hover {
+            background-color: #1991DB;
+        }
+        .habit-list, .journal-entries {
+            list-style-type: none;
+        }
+        .habit-item, .journal-entries li {
+            background-color: var(--secondary-bg);
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 6px 22px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.04);
+        }
+        .habit-item:hover, .journal-entries li:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .habit-item label {
+            margin-left: 15px;
+            flex-grow: 1;
+            font-size: 16px;
+        }
+        .b_navbar {
+    background-color: #24242400;
+    display: flex;
+    justify-content: space-around;
+    padding: 15px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+        .nav-item {
+            color: var(--secondary-text);
+            text-decoration: none;
+            font-size: 24px;
+            transition: all 0.3s ease;
+        }
+        .nav-item.active {
+            color: var(--primary-color);
+        }
+        .page {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        .page.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .chat-container {
+            height: calc(100vh - 250px);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding: 15px;
+            background-color: var(--secondary-bg);
+            border-radius: 8px;
+        }
+        .chat-message {
+            background-color: var(--bg-color);
+            padding: 12px;
+            border-radius: 18px;
+            max-width: 80%;
+            line-height: 1.4;
+        }
+        .user-message {
+            background-color: var(--primary-color);
+            align-self: flex-end;
+        }
+        .delete-btn {
+            background-color: var(--danger-color);
+            margin-left: 10px;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .delete-btn:hover {
+            background-color: #C01E4E;
+        }
+        .checkbox-wrapper {
+            display: inline-block;
+            position: relative;
+            padding-left: 35px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .checkbox-wrapper input {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+            height: 0;
+            width: 0;
+        }
+        .checkmark {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 25px;
+            width: 25px;
+            background-color: var(--bg-color);
+            border: 2px solid var(--secondary-text);
+            border-radius: 5px;
+        }
+        .checkbox-wrapper:hover input ~ .checkmark {
+            background-color: #2B3E50;
+        }
+        .checkbox-wrapper input:checked ~ .checkmark {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        .checkmark:after {
+            content: "";
+            position: absolute;
+            display: none;
+        }
+        .checkbox-wrapper input:checked ~ .checkmark:after {
+            display: block;
+        }
+        .checkbox-wrapper .checkmark:after {
+            left: 9px;
+            top: 5px;
+            width: 5px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 3px 3px 0;
+            transform: rotate(45deg);
+        }
+        @media (max-width: 600px) {
+            .main-container {
+                padding: 15px;
+            }
+            h1 {
+                font-size: 24px;
+            }
+            .input-group {
+                flex-direction: column;
+            }
+            .habit-item, .journal-entries li {
+                padding: 12px;
+            }
+        }
+      
+      
+      .habit-score {
+            margin: 10px;
+            font-size: 14px;
+            color: var(--secondary-text);
+        }
+
+        .habit-streak {
+            margin: 10px;
+            font-size: 14px;
+            color: var(--secondary-text);
+        }
+        .habit-score.positive {
+            color: #4CAF50;
+        }
+        .habit-score.negative {
+            color: var(--danger-color);
+        }
+
+        .modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 1000; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: #00000080; /* Black w/ opacity */
+}
+
+.modal-content {
+    background-color: #1414146f;
+    margin: 15% auto; /* 15% from the top and centered */
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%; /* Could be more or less, depending on screen size */
+    backdrop-filter: blur(10px);
+
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+        .modal-content pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Overwhelming animated background */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(50% 50% at 20% 10%, rgba(25, 161, 242, 0.15), transparent 60%),
+                radial-gradient(50% 50% at 80% 20%, rgba(224,36,94,0.12), transparent 60%),
+                radial-gradient(50% 50% at 50% 80%, rgba(0,255,170,0.08), transparent 60%),
+                repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0, rgba(255,255,255,0.02) 2px, transparent 2px, transparent 4px),
+                linear-gradient(135deg, #0b0f13 0%, #0d0f12 25%, #0b0f13 50%, #0d0f12 75%, #0b0f13 100%);
+            animation: bg-pan 18s linear infinite;
+            pointer-events: none;
+            z-index: -2;
+        }
+        @keyframes bg-pan {
+            0% { transform: translate3d(0,0,0); }
+            50% { transform: translate3d(-2%, -1%, 0); }
+            100% { transform: translate3d(0,0,0); }
+        }
+        body::after {
+            content: "";
+            position: fixed; inset: 0;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px,
+                transparent 1px, transparent 3px
+            );
+            mix-blend-mode: overlay;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Ticker banner */
+        .ticker { position: sticky; top: 0; z-index: 20; background: linear-gradient(90deg,#1da1f2,#e0245e,#00ffaa,#ffae00); background-size: 400% 100%; animation: hue-shift 8s linear infinite; color: #000; font-weight: 900; text-transform: uppercase; box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+        @keyframes hue-shift { 0%{background-position:0% 50%} 100%{background-position:100% 50%} }
+        .ticker-track { white-space: nowrap; overflow: hidden; padding: 6px 0; }
+        .ticker-track span { display: inline-block; padding: 0 24px; }
+        .ticker-track .scroll { display: inline-block; animation: marquee 18s linear infinite; }
+        @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%);} }
+
+        /* Navbar extras */
+        .navbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
+        .nav-badges { display: flex; gap: 8px; align-items: center; }
+        .pill { background: rgba(255,255,255,0.12); color: #fff; border-radius: 999px; padding: 6px 10px; font-size: 12px; border: 1px solid rgba(255,255,255,0.1); }
+        .notif-dot { position: relative; }
+        .notif-dot::after { content: ""; position: absolute; top: -4px; right: -4px; width: 10px; height: 10px; background: #E0245E; border-radius: 50%; box-shadow: 0 0 0 3px rgba(224,36,94,0.25); animation: pulse 1.4s ease-in-out infinite; }
+        @keyframes pulse { 0%{ transform: scale(1);} 50%{ transform: scale(1.15);} 100%{ transform: scale(1);} }
+
+        /* Floating toolbar */
+        .toolbar-floating { position: fixed; right: 10px; top: 80px; z-index: 10; display: grid; gap: 10px; }
+        .toolbar-floating .tool-btn { width: 44px; height: 44px; border-radius: 12px; backdrop-filter: blur(6px); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); display: grid; place-items: center; color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,0.3); transition: transform .15s ease, background .15s ease; cursor: pointer; }
+        .toolbar-floating .tool-btn:hover { transform: translateY(-2px) scale(1.05); background: rgba(255,255,255,0.12); }
+
+        /* Tags & progress bars */
+        .habit-title-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid rgba(255,255,255,0.12); }
+        .tag-info { background: rgba(29,161,242,0.18); color: #a8d8ff; }
+        .tag-danger { background: rgba(224,36,94,0.18); color: #ff9cb7; }
+        .tag-warning { background: rgba(255,174,0,0.18); color: #ffd58a; }
+        .tag-success { background: rgba(0,255,170,0.18); color: #9bffd8; }
+        .habit-meta { color: #9aa8b3; font-size: 12px; margin-top: 4px; }
+        .progress { position: relative; width: 100%; height: 12px; border-radius: 999px; overflow: hidden; margin-top: 8px; background: rgba(255,255,255,0.06); }
+        .neon-border { box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 0 12px rgba(0,255,170,0.12), inset 0 0 12px rgba(0,0,0,0.25); }
+        .progress-ideal { position: absolute; height: 100%; left: 0; top: 0; background: repeating-linear-gradient(45deg, rgba(29,161,242,0.35), rgba(29,161,242,0.35) 8px, rgba(29,161,242,0.15) 8px, rgba(29,161,242,0.15) 16px); }
+        .progress-actual { position: absolute; height: 100%; left: 0; top: 0; background: linear-gradient(90deg, rgba(0,255,170,0.75), rgba(0,255,170,0.45)); }
+
+        /* Crowded bottom nav */
+        .b_navbar { gap: 26px; }
+        .nav-item { position: relative; }
+        .nav-item .label { position: absolute; top: -10px; right: -6px; background: #E0245E; color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 999px; }
+
+        /* Glow button */
+        .glow { box-shadow: 0 0 0 1px rgba(64,92,245,0.6), 0 0 18px rgba(64,92,245,0.35), inset 0 0 8px rgba(255,255,255,0.06); }
+        .glow:hover { box-shadow: 0 0 0 1px rgba(64,92,245,0.8), 0 0 26px rgba(64,92,245,0.55), inset 0 0 10px rgba(255,255,255,0.08); }
+
+        /* Slide-in filter drawer */
+        .drawer {
+            position: fixed; top: 0; right: 0; height: 100vh; width: min(92vw, 360px);
+            background: rgba(10, 15, 18, 0.95); backdrop-filter: blur(10px);
+            border-left: 1px solid rgba(255,255,255,0.1);
+            transform: translateX(100%);
+            transition: transform .3s ease;
+            z-index: 1001; padding: 16px;
+        }
+        .drawer.open { transform: translateX(0); }
+        .drawer h3 { margin-bottom: 12px; }
+        .drawer label { font-size: 14px; color: #cbd5df; }
+        .drawer .row { margin: 12px 0; }
+        .drawer .actions { display: flex; gap: 8px; }
+        .drawer .actions button { flex: 1; }
+
+        /* Modal with fade/scale */
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 1000; }
+        .modal-backdrop.show { opacity: 1; pointer-events: auto; }
+        .modal-card { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -42%) scale(.96); background: #11171c; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 24px 60px rgba(0,0,0,0.45); border-radius: 12px; width: min(92vw, 680px); max-height: 80vh; overflow: auto; opacity: 0; transition: transform .2s ease, opacity .2s ease; z-index: 1002; }
+        .modal-card.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        .modal-card header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .modal-card .content { padding: 16px; }
+        .modal-close { background: transparent; border: 0; color: #fff; font-size: 18px; cursor: pointer; }
+
+        /* Toasts */
+        .toasts { position: fixed; bottom: 86px; right: 12px; display: grid; gap: 10px; z-index: 1100; }
+        .toast { background: rgba(20,28,33,0.95); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px 12px; border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,0.35); transform: translateY(12px); opacity: 0; transition: all .25s ease; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+    </style>
+</head>
+<body>
+    <!-- Overwhelming ticker -->
+    <div class="ticker">
+        <div class="ticker-track">
+            <div class="scroll">
+                <span>ALERT: 7 new prompts</span>
+                <span>REMINDER: hydrate now</span>
+                <span>SYNC: 12 pending habits</span>
+                <span>TIP: press every button</span>
+                <span>ANALYTICS: spiking trend ↑</span>
+                <span>STREAK: don't break it</span>
+                <span>ALERT: 7 new prompts</span>
+                <span>REMINDER: hydrate now</span>
+                <span>SYNC: 12 pending habits</span>
+                <span>TIP: press every button</span>
+                <span>ANALYTICS: spiking trend ↑</span>
+                <span>STREAK: don't break it</span>
+            </div>
+        </div>
+    </div>
+    <div class="navbar">
+        <img src="/static/img/Forward_logo.png" style="height: 50px;" alt="Logo">
+        <div class="nav-badges">
+            <span class="pill">Overdrive</span>
+            <span class="pill">Chaos Mode</span>
+            <span class="pill notif-dot"><i class="fas fa-bell"></i></span>
+        </div>
+    </div>
+    <!-- Floating toolbar -->
+    <div class="toolbar-floating">
+        <div class="tool-btn" id="toolBoost" title="Boost"><i class="fas fa-bolt"></i></div>
+        <div class="tool-btn" id="toolChart" title="Chart"><i class="fas fa-chart-line"></i></div>
+        <div class="tool-btn" id="toolFilter" title="Filter"><i class="fas fa-filter"></i></div>
+        <div class="tool-btn" id="toolDazzle" title="Dazzle"><i class="fas fa-star"></i></div>
+        <div class="tool-btn" id="toolNoise" title="Noise"><i class="fas fa-bell"></i></div>
+    </div>
+    
+    <div class="main-container">
+        <div id="dailyPage" class="page active">
+            <h1>Daily Tracker</h1>
+            <div class="input-group">
+                <textarea id="journalInput" placeholder="Write your journal entry for today" rows="4"></textarea>
+            </div>
+            <div class="input-group">
+                <button onclick="addJournalEntry()">Save Entry</button>
+            </div>
+        </div>
+
+        <div id="habitsPage" class="page">
+            <h1>Habits</h1>
+            <div class="input-group" style="flex-wrap: wrap; gap: 10px;">
+                <input type="text" id="habitName" placeholder="Habit name (e.g., Workout)">
+                <select id="targetPerWeek" style="height: 50px; background-color:#0d0f12; color:#fff; border:1px solid var(--secondary-bg); border-radius:8px; padding: 5px;">
+                    <option value="7">Daily (7/wk)</option>
+                    <option value="6">6 per week</option>
+                    <option value="5">5 per week</option>
+                    <option value="4">4 per week</option>
+                    <option value="3">3 per week</option>
+                    <option value="2">2 per week</option>
+                    <option value="1">1 per week</option>
+                </select>
+                <input type="color" id="habitColor" value="#00b894" style="height:50px; max-width: 120px;">
+                <button onclick="addHabit()" class="glow">Add Habit</button>
+            </div>
+            <ul class="habit-list" id="habitList"></ul>
+            <div style="background: var(--secondary-bg); padding: 16px; border-radius: 8px;">
+                <canvas id="habitChart" height="140"></canvas>
+            </div>
+        </div>
+
+        <div id="settingsPage" class="page">
+            <h1>User Settings</h1>
+            <div class="input-group">
+                <input type="text" id="usernameInput" placeholder="Username">
+            </div>
+            <div class="input-group">
+                <input type="email" id="emailInput" placeholder="Email">
+            </div>
+            <ul class="journal-entries" id="journalEntries"></ul>
+            <button onclick="saveSettings()">Save Settings</button>
+        </div>
+
+        <!-- Modal Structure -->
+        <div id="journalModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeJournalModal()">&times;</span>
+                <h2>Journal Entry</h2>
+                <pre id="modalContent"></pre>
+            </div>
+        </div>
+    </div>
+
+    <nav class="b_navbar">
+        <a href="#" class="nav-item active" onclick="changePage('dailyPage', this)"><i class="fas fa-calendar-day"></i><span class="label">9</span></a>
+        <a href="#" class="nav-item" onclick="changePage('habitsPage', this); loadHabits()"><i class="fas fa-list-check"></i><span class="label">!</span></a>
+        <a href="#" class="nav-item" onclick="changePage('settingsPage', this)"><i class="fas fa-cog"></i></a>
+        <a href="#" class="nav-item" onclick="openNotifications()"><i class="fas fa-bell"></i><span class="label">3</span></a>
+        <a href="#" class="nav-item" onclick="openTrends()"><i class="fas fa-chart-line"></i></a>
+    </nav>
+    
+
+    <script>
+        function changePage(pageId, navItem) {
+            document.querySelectorAll('.page').forEach(page => {
+                page.style.display = 'none';
+                page.classList.remove('active');
+            });
+            const newPage = document.getElementById(pageId);
+            newPage.style.display = 'block';
+            setTimeout(() => newPage.classList.add('active'), 50);
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            navItem.classList.add('active');
+        }
+
+        async function addJournalEntry() {
+            const journalInput = document.getElementById('journalInput');
+            const journalEntries = document.getElementById('journalEntries');
+            
+            if (journalInput.value.trim() !== '') {
+                try {
+                    const response = await fetch('/api/journal', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ content: journalInput.value.replace(/\n/g, '\n') }),
+                    });
+                    const newEntry = await response.json();
+                    const li = document.createElement('li');
+                    li.textContent = new Date(newEntry.timestamp).toLocaleString();
+                    // In addJournalEntry function
+                    li.onclick = () => openJournalModal(newEntry.content, newEntry.timestamp);
+                    journalEntries.insertBefore(li, journalEntries.firstChild);
+                    journalInput.value = '';
+                } catch (error) {
+                    console.error('Error adding journal entry:', error);
+                }
+            }
+        }
+
+        async function loadJournalEntries() {
+            try {
+                const response = await fetch('/api/journal');
+                const entries = await response.json();
+                const journalEntries = document.getElementById('journalEntries');
+                journalEntries.innerHTML = '';
+                entries.forEach(entry => {
+                    const li = document.createElement('li');
+                    li.textContent = new Date(entry.timestamp).toLocaleString();
+                    li.onclick = () => openJournalModal(entry.content, entry.timestamp);
+                    journalEntries.appendChild(li);
+                });
+            } catch (error) {
+                console.error('Error loading journal entries:', error);
+            }
+        }
+
+        function openJournalModal(content, timestamp) {
+    const modal = document.getElementById('journalModal');
+    const modalContent = document.getElementById('modalContent');
+    modalContent.innerHTML = `<p>${content}</p><p><em>${new Date(timestamp).toLocaleString()}</em></p>`;
+    modal.style.display = 'block';
+}
+
+
+        function closeJournalModal() {
+            const modal = document.getElementById('journalModal');
+            modal.style.display = 'none';
+        }
+
+        async function saveSettings() {
+            const username = document.getElementById('usernameInput').value;
+            const email = document.getElementById('emailInput').value;
+            console.log('Settings saved:', { username, email });
+            alert('Settings saved successfully!');
+        }
+
+        // Toast system
+        const Toasts = (() => {
+            const holder = document.createElement('div');
+            holder.className = 'toasts';
+            document.body.appendChild(holder);
+            return {
+                show(text, timeout=2200){
+                    const t = document.createElement('div');
+                    t.className = 'toast';
+                    t.textContent = text;
+                    holder.appendChild(t);
+                    requestAnimationFrame(()=> t.classList.add('show'));
+                    setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=> holder.removeChild(t), 250); }, timeout);
+                }
+            }
+        })();
+
+        let allHabits = [];
+        let currentHabitIdForChart = null;
+        const chartDaysOptions = [7, 14, 30, 90];
+        let chartDaysIndex = 2; // default 30 days
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadJournalEntries();
+            await loadHabits();
+            attachToolbarHandlers();
+            setupFilterDrawer();
+        });
+
+        // Habits logic
+        let habitChart = null;
+
+        async function addHabit() {
+            const nameEl = document.getElementById('habitName');
+            const targetEl = document.getElementById('targetPerWeek');
+            const colorEl = document.getElementById('habitColor');
+            const name = nameEl.value.trim();
+            if (!name) return;
+            try {
+                await fetch('/api/habits', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        target_per_week: parseInt(targetEl.value, 10),
+                        color: colorEl.value
+                    })
+                });
+                nameEl.value = '';
+                await loadHabits();
+            } catch (e) {
+                console.error('Add habit failed', e);
+            }
+        }
+
+        async function loadHabits() {
+            try {
+                const res = await fetch('/api/habits');
+                const habits = await res.json();
+                allHabits = habits;
+                renderHabitList(habits);
+                return;
+                const list = document.getElementById('habitList');
+                list.innerHTML = '';
+                habits.forEach(h => {
+                    const li = document.createElement('li');
+                    li.className = 'habit-item';
+                    li.style.borderLeft = `6px solid ${h.color || '#00b894'}`;
+                    const label = document.createElement('label');
+                    label.style.flexGrow = '1';
+                    const idealPct = Math.min(100, Math.round((h.target_per_week/7)*100));
+                    const actualPct = Math.min(100, Math.round(h.score));
+                    label.innerHTML = `
+                        <div class="habit-title-row">
+                            <strong>${h.name}</strong>
+                            <span class="tag tag-danger">HOT</span>
+                            <span class="tag tag-info">NEW</span>
+                            <span class="tag tag-warning">⚠ Busy</span>
+                            <span class="tag tag-success">${h.target_per_week}/wk</span>
+                        </div>
+                        <div class="habit-meta">Score: ${h.score.toFixed(1)}% · Streak: ${h.streak} (best ${h.best_streak}) · Today: ${h.completed ? '✔' : '✖'}</div>
+                        <div class="progress neon-border">
+                            <div class="progress-ideal" style="width:${idealPct}%"></div>
+                            <div class="progress-actual" style="width:${actualPct}%"></div>
+                        </div>
+                    `;
+
+                    const doneBtn = document.createElement('button');
+                    doneBtn.textContent = h.completed ? 'Done Today ✓' : 'Mark Done Today';
+                    doneBtn.style.backgroundColor = h.completed ? '#2ecc71' : '';
+                    doneBtn.onclick = async () => {
+                        await fetch(`/api/habits/${h.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ completed: !h.completed })
+                        });
+                        await loadHabits();
+                        await loadHabitProgress(h.id);
+                    };
+
+                    const viewBtn = document.createElement('button');
+                    viewBtn.textContent = 'View Progress';
+                    viewBtn.style.marginLeft = '8px';
+                    viewBtn.onclick = () => loadHabitProgress(h.id);
+
+                    li.appendChild(label);
+                    li.appendChild(doneBtn);
+                    li.appendChild(viewBtn);
+                    list.appendChild(li);
+                });
+            } catch (e) {
+                console.error('Load habits failed', e);
+            }
+        }
+
+        async function loadHabitProgress(habitId) {
+            try {
+                const res = await fetch(`/api/habits/${habitId}/progress?days=${chartDaysOptions[chartDaysIndex]}`);
+                const data = await res.json();
+                const ctx = document.getElementById('habitChart').getContext('2d');
+                if (habitChart) {
+                    habitChart.destroy();
+                }
+                habitChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates,
+                        datasets: [
+                            {
+                                label: 'Ideal (cumulative)',
+                                data: data.ideal,
+                                borderColor: '#8884d8',
+                                backgroundColor: 'rgba(136,132,216,0.2)',
+                                tension: 0.25,
+                            },
+                            {
+                                label: 'Actual (cumulative)',
+                                data: data.actual,
+                                borderColor: data.habit.color || '#00b894',
+                                backgroundColor: 'rgba(0,184,148,0.2)',
+                                tension: 0.25,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { labels: { color: '#fff' } },
+                            title: {
+                                display: true,
+                                text: `${data.habit.name} — ${data.habit.target_per_week}/week`,
+                                color: '#fff'
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#ccc' }, grid: { color: '#1f2a36' } },
+                            y: { ticks: { color: '#ccc' }, grid: { color: '#1f2a36' } }
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error('Load progress failed', e);
+            }
+        }
+
+        // Render list with animations and wireups
+        function renderHabitList(habits) {
+            const list = document.getElementById('habitList');
+            list.innerHTML = '';
+            habits.forEach(h => {
+                const li = document.createElement('li');
+                li.className = 'habit-item';
+                li.style.borderLeft = `6px solid ${h.color || '#00b894'}`;
+                li.style.transition = 'transform .18s ease, opacity .18s ease';
+                li.style.opacity = '0'; li.style.transform = 'translateY(6px)';
+                setTimeout(()=>{ li.style.opacity = '1'; li.style.transform = 'translateY(0)'; }, 0);
+
+                const label = document.createElement('label');
+                label.style.flexGrow = '1';
+                const idealPct = Math.min(100, Math.round((h.target_per_week/7)*100));
+                const actualPct = Math.min(100, Math.round(h.score));
+                label.innerHTML = `
+                    <div class="habit-title-row">
+                        <strong>${h.name}</strong>
+                        <span class="tag tag-danger">HOT</span>
+                        <span class="tag tag-info">NEW</span>
+                        <span class="tag tag-warning">Warn</span>
+                        <span class="tag tag-success">${h.target_per_week}/wk</span>
+                    </div>
+                    <div class="habit-meta">Score: ${h.score.toFixed(1)}% · Streak: ${h.streak} (best ${h.best_streak}) · Today: ${h.completed ? 'Yes' : 'No'}</div>
+                    <div class="progress neon-border">
+                        <div class="progress-ideal" style="width:${idealPct}%"></div>
+                        <div class="progress-actual" style="width:${actualPct}%"></div>
+                    </div>
+                `;
+
+                const doneBtn = document.createElement('button');
+                doneBtn.textContent = h.completed ? 'Done Today ✓' : 'Mark Done Today';
+                doneBtn.style.backgroundColor = h.completed ? '#2ecc71' : '';
+                doneBtn.onclick = async () => {
+                    await fetch(`/api/habits/${h.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ completed: !h.completed })
+                    });
+                    await loadHabits();
+                    await loadHabitProgress(h.id);
+                    Toasts.show(h.completed ? 'Marked undone' : 'Marked done');
+                };
+
+                const viewBtn = document.createElement('button');
+                viewBtn.textContent = 'View Progress';
+                viewBtn.style.marginLeft = '8px';
+                viewBtn.onclick = () => { currentHabitIdForChart = h.id; loadHabitProgress(h.id); };
+
+                li.appendChild(label);
+                li.appendChild(doneBtn);
+                li.appendChild(viewBtn);
+                list.appendChild(li);
+            });
+        }
+
+        function attachToolbarHandlers() {
+            const boost = document.getElementById('toolBoost');
+            const chart = document.getElementById('toolChart');
+            const filter = document.getElementById('toolFilter');
+            const dazzle = document.getElementById('toolDazzle');
+            const noise = document.getElementById('toolNoise');
+
+            boost.onclick = async () => {
+                try {
+                    const exists = allHabits.some(h => h.name === 'Demo Habit');
+                    if (!exists) {
+                        await fetch('/api/habits', {
+                            method: 'POST', headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({ name: 'Demo Habit', target_per_week: 5, color: '#ff6b6b' })
+                        });
+                        await loadHabits();
+                    }
+                    Toasts.show('Boosted: Demo habit ready');
+                } catch(e) { console.error(e); Toasts.show('Boost failed'); }
+            };
+
+            chart.onclick = async () => {
+                if (!currentHabitIdForChart && allHabits.length) {
+                    currentHabitIdForChart = allHabits[0].id;
+                }
+                if (!currentHabitIdForChart) { Toasts.show('Pick a habit first'); return; }
+                chartDaysIndex = (chartDaysIndex + 1) % chartDaysOptions.length;
+                await loadHabitProgress(currentHabitIdForChart);
+                Toasts.show(`Chart: ${chartDaysOptions[chartDaysIndex]} days`);
+            };
+
+            filter.onclick = () => toggleDrawer(true);
+
+            dazzle.onclick = () => {
+                document.body.classList.toggle('chaos-on');
+                Toasts.show('Chaos mode toggled');
+            };
+
+            noise.onclick = () => {
+                const tk = document.querySelector('.ticker');
+                if (!tk) return; tk.style.display = tk.style.display === 'none' ? '' : 'none';
+                Toasts.show('Ticker toggled');
+            };
+        }
+
+        function setupFilterDrawer() {
+            const drawer = document.createElement('div');
+            drawer.id = 'filterDrawer';
+            drawer.className = 'drawer';
+            drawer.innerHTML = `
+                <h3><i class="fas fa-filter"></i> Filters</h3>
+                <div class="row"><label>Search</label><input id="fltSearch" placeholder="type to search"/></div>
+                <div class="row"><label><input type="checkbox" id="fltDone"> Completed today</label></div>
+                <div class="row"><label>Target per week</label>
+                    <select id="fltTarget">
+                        <option value="">Any</option>
+                        <option value="7">7</option>
+                        <option value="5">5+</option>
+                        <option value="3">3+</option>
+                        <option value="1">1+</option>
+                    </select>
+                </div>
+                <div class="actions">
+                    <button onclick="applyFilters()">Apply</button>
+                    <button onclick="resetFilters()">Reset</button>
+                    <button onclick="toggleDrawer(false)">Close</button>
+                </div>
+            `;
+            document.body.appendChild(drawer);
+        }
+
+        function toggleDrawer(open) {
+            const drawer = document.getElementById('filterDrawer');
+            if (!drawer) return; drawer.classList.toggle('open', !!open);
+        }
+
+        function applyFilters() {
+            const q = document.getElementById('fltSearch').value.toLowerCase();
+            const done = document.getElementById('fltDone').checked;
+            const tgt = document.getElementById('fltTarget').value;
+            let filtered = allHabits.slice();
+            if (q) filtered = filtered.filter(h => h.name.toLowerCase().includes(q));
+            if (done) filtered = filtered.filter(h => h.completed);
+            if (tgt) {
+                const n = parseInt(tgt,10);
+                filtered = filtered.filter(h => h.target_per_week >= n);
+            }
+            renderHabitList(filtered);
+            Toasts.show('Filters applied');
+        }
+
+        function resetFilters() {
+            const s = document.getElementById('fltSearch');
+            const d = document.getElementById('fltDone');
+            const t = document.getElementById('fltTarget');
+            if (s) s.value = '';
+            if (d) d.checked = false;
+            if (t) t.value = '';
+            renderHabitList(allHabits);
+            Toasts.show('Filters reset');
+        }
+
+        function openNotifications() {
+            const backdrop = document.createElement('div'); backdrop.className='modal-backdrop';
+            const card = document.createElement('div'); card.className='modal-card';
+            card.innerHTML = `<header><strong>Notifications</strong><button class=\"modal-close\" onclick=\"this.closest('body').querySelector('.modal-backdrop').remove(); this.closest('.modal-card').remove();\">✕</button></header><div class=\"content\"><div id=\"notifContent\">Loading…</div></div>`;
+            document.body.appendChild(backdrop); document.body.appendChild(card);
+            requestAnimationFrame(()=>{backdrop.classList.add('show'); card.classList.add('show')});
+            fetch('/api/timeline').then(r=>r.text()).then(t=>{
+                const c = document.getElementById('notifContent');
+                if (c) c.textContent = t;
+            }).catch(()=>{ const c = document.getElementById('notifContent'); if (c) c.textContent='Failed to load notifications'; });
+        }
+
+        function openTrends() {
+            if (!allHabits.length) { Toasts.show('No habits yet'); return; }
+            const h = allHabits[0]; currentHabitIdForChart = h.id; loadHabitProgress(h.id);
+            changePage('habitsPage', document.querySelector('.b_navbar .nav-item:nth-child(2)'));
+            Toasts.show('Showing trends');
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
