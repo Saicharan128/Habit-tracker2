@@ -1,5 +1,7 @@
 import json
 import sqlite3
+import shutil
+import random
 from datetime import datetime, date, timedelta
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -78,7 +80,7 @@ def _ensure_schema():
             ')'
         )
 
-        # Lightweight migrations
+        # Lightweight migrations for legacy DBs
         existing = {row['name'] for row in conn.execute('PRAGMA table_info(habit)')}
         if 'target_per_week' not in existing:
             conn.execute('ALTER TABLE habit ADD COLUMN target_per_week INTEGER NOT NULL DEFAULT 7')
@@ -97,6 +99,7 @@ def _ensure_schema():
         if 'score' not in existing:
             conn.execute('ALTER TABLE habit ADD COLUMN score REAL NOT NULL DEFAULT 0.0')
 
+        # Ensure target range sane
         conn.execute(
             'UPDATE habit SET target_per_week = ? '
             'WHERE target_per_week IS NULL OR target_per_week < ? OR target_per_week > ?',
@@ -105,6 +108,153 @@ def _ensure_schema():
         conn.commit()
     finally:
         conn.close()
+
+
+def _maybe_seed_demo_data(force: bool = False):
+    """Populate the database with rich demo content when empty or when only demo
+    content should be refreshed. This seeds habits with realistic logs, a
+    vision, and a healthy number of journal entries so the UI looks full.
+    """
+    conn = _connect()
+    try:
+        # If there are very few habits, refresh demo content
+        total = conn.execute('SELECT COUNT(*) AS c FROM habit').fetchone()['c']
+        if not force and int(total or 0) > 5:
+            return
+
+        # Clear previous Demo:* habits (logs cascade)
+        conn.execute("DELETE FROM habit WHERE name LIKE 'Demo:%'")
+
+        random.seed(1234)
+        now = datetime.now()
+        today = date.today()
+
+        # Male-oriented palette (blues/teals/greens)
+        palette = [
+            '#2563eb', '#0ea5e9', '#06b6d4', '#22c55e', '#0284c7', '#1d4ed8',
+            '#0ea5e9', '#0891b2', '#10b981', '#3b82f6', '#14b8a6', '#16a34a',
+        ]
+
+        # Define many demo habits with different weekly targets
+        defs = [
+            ('Demo: Strength training', 4),
+            ('Demo: Morning run', 5),
+            ('Demo: Hydration goal', 7),
+            ('Demo: Read non-fiction', 4),
+            ('Demo: Sleep before 11', 6),
+            ('Demo: No sugar day', 3),
+            ('Demo: Deep work block', 5),
+            ('Demo: Stretch & mobility', 5),
+            ('Demo: Cold shower', 3),
+            ('Demo: Journaling', 7),
+            ('Demo: Skill practice', 4),
+            ('Demo: Family time', 3),
+            ('Demo: Outdoor walk', 6),
+            ('Demo: High-protein breakfast', 6),
+            ('Demo: Inbox zero', 5),
+            ('Demo: Financial review', 2),
+            ('Demo: Focused study', 4),
+            ('Demo: Mindfulness', 6),
+            ('Demo: Side project', 5),
+            ('Demo: Phone off by 9pm', 7),
+            ('Demo: Core work', 4),
+            ('Demo: Language practice', 4),
+            ('Demo: Steps 8k+', 6),
+            ('Demo: House chores', 3),
+        ]
+
+        habit_ids = []
+        for i, (name, target) in enumerate(defs):
+            color = palette[i % len(palette)]
+            created_ago = random.randint(90, 180)
+            created_at = (now - timedelta(days=created_ago)).isoformat()
+            cur = conn.execute(
+                'INSERT INTO habit (name, color, target_per_week, created_at) VALUES (?, ?, ?, ?)',
+                (name, color, _sanitize_target(target, target), created_at)
+            )
+            habit_ids.append((cur.lastrowid, name, target, created_ago))
+
+        # Logs with realistic per-target patterns + mild randomness
+        for hid, name, target, created_ago in habit_ids:
+            start = today - timedelta(days=created_ago)
+            d = start
+            while d <= today:
+                wd = d.weekday()  # 0=Mon
+                complete = False
+                if target >= 7:
+                    complete = (d.toordinal() % 12) != 0  # near daily
+                elif target == 6:
+                    complete = wd in (0,1,2,3,4,6)
+                elif target == 5:
+                    complete = wd < 5
+                elif target == 4:
+                    complete = wd in (0,2,4,6)  # Mon Wed Fri Sun
+                elif target == 3:
+                    complete = wd in (1,3,6)  # Tue Thu Sun
+                else:
+                    complete = wd in (5,)      # Sat
+                # mild noise
+                if random.random() < 0.07:
+                    complete = not complete
+                if complete:
+                    conn.execute(
+                        'INSERT OR IGNORE INTO habit_log (habit_id, day, created_at) VALUES (?, ?, ?)',
+                        (hid, d.isoformat(), now.isoformat())
+                    )
+                d += timedelta(days=1)
+
+        # Ideal self if empty
+        icount = conn.execute('SELECT COUNT(*) AS c FROM ideal_self').fetchone()['c']
+        if int(icount or 0) == 0:
+            conn.execute(
+                'INSERT INTO ideal_self (vision, focus_areas, created_at) VALUES (?, ?, ?)',
+                (
+                    'Disciplined, focused, strong. I keep my word, invest in long-term health and mastery, and lead with calm energy.',
+                    'Strength,Focus,Health,Learning,Family',
+                    now.isoformat(),
+                )
+            )
+
+        # Journal entries (plentiful)
+        phrases = [
+            'Solid gym session; form improving.',
+            'Walked outside; cleared my head.',
+            'Hard start; finished strong and consistent.',
+            'Read 20 pages and took notes.',
+            'Deep work block - no distractions.',
+            'Hydration and sleep on point.',
+            'Small wins added up today.',
+            'Energy dipped; reset with a walk.',
+            'Kept phone away in the evening.',
+            'Tracked meals and protein target.',
+        ]
+        entry_count = 150
+        for _ in range(entry_count):
+            days_ago = random.randint(0, 120)
+            ts = now - timedelta(days=days_ago, hours=random.randint(6, 23), minutes=random.randint(0, 59))
+            conn.execute(
+                'INSERT INTO journal_entry (content, timestamp) VALUES (?, ?)',
+                (random.choice(phrases), ts.isoformat())
+            )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_db_to_instance():
+    """Copy the main DB into instance/habits_journal.db for consistency.
+    Some environments inspect the instance DB; mirroring helps avoid confusion.
+    """
+    try:
+        instance_dir = BASE_DIR / 'instance'
+        instance_dir.mkdir(parents=True, exist_ok=True)
+        target = instance_dir / 'habits_journal.db'
+        if DB_PATH.exists():
+            shutil.copyfile(DB_PATH, target)
+    except Exception:
+        # Best-effort mirror; ignore failures
+        pass
 
 
 def _parse_datetime(value: str) -> datetime:
@@ -117,8 +267,7 @@ def _parse_datetime(value: str) -> datetime:
 def _compute_habit_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
     habit_id = row['id']
     log_rows = conn.execute(
-        'SELECT day FROM habit_log WHERE habit_id = ? ORDER BY day ASC',
-        (habit_id,)
+        'SELECT day FROM habit_log WHERE habit_id = ? ORDER BY day ASC', (habit_id,)
     ).fetchall()
     log_days = [date.fromisoformat(r['day']) for r in log_rows]
     log_set = set(log_days)
@@ -129,7 +278,7 @@ def _compute_habit_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
     created_at = _parse_datetime(row['created_at'])
     created_day = created_at.date()
 
-    # streaks
+    # Streaks
     current = 0
     best = 0
     prev_day = None
@@ -166,13 +315,8 @@ def _compute_habit_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         'UPDATE habit SET score = ?, completed_days = ?, completed = ?, streak = ?, '
         'best_streak = ?, last_completed = ? WHERE id = ?',
         (
-            payload['score'],
-            payload['completed_days'],
-            payload['completed'],
-            payload['streak'],
-            payload['best_streak'],
-            payload['last_completed'],
-            habit_id,
+            payload['score'], payload['completed_days'], payload['completed'],
+            payload['streak'], payload['best_streak'], payload['last_completed'], habit_id,
         ),
     )
     conn.commit()
@@ -184,7 +328,7 @@ class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory=None, **kwargs):
         super().__init__(*args, directory=directory or str(BASE_DIR), **kwargs)
 
-    def log_message(self, format, *args):
+    def log_message(self, format, *args):  # silence default logging
         return
 
     def do_GET(self):
@@ -212,6 +356,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             self._create_journal_entry()
         elif parsed.path == '/api/idealself':
             self._save_ideal_self()
+        elif parsed.path == '/api/demo/reset':
+            # Force-refresh the demo content
+            _maybe_seed_demo_data(force=True)
+            self._respond_json({'status': 'ok', 'message': 'Demo data refreshed'})
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -325,8 +473,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             if 'completed' in payload:
                 today_str = date.today().isoformat()
                 existing = conn.execute(
-                    'SELECT id FROM habit_log WHERE habit_id = ? AND day = ?',
-                    (habit_id, today_str)
+                    'SELECT id FROM habit_log WHERE habit_id = ? AND day = ?', (habit_id, today_str)
                 ).fetchone()
                 if payload['completed'] and existing is None:
                     conn.execute(
@@ -373,8 +520,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             start_day = max(range_start, created_day)
 
             log_rows = conn.execute(
-                'SELECT day FROM habit_log WHERE habit_id = ? ORDER BY day ASC',
-                (habit_id,)
+                'SELECT day FROM habit_log WHERE habit_id = ? ORDER BY day ASC', (habit_id,)
             ).fetchall()
             log_days = [date.fromisoformat(r['day']) for r in log_rows]
             log_set = set(log_days)
@@ -393,17 +539,14 @@ class AppHandler(SimpleHTTPRequestHandler):
             ideal_series = []
             ideal_step = (row['target_per_week'] or 7) / 7.0
 
-            # Use range-relative baseline so the graph starts at 0 for the selected window
             baseline_day = start_day - timedelta(days=1)
             baseline = cumulative_actual.get(baseline_day, 0)
 
             current_day = start_day
             while current_day <= today:
                 dates.append(current_day.isoformat())
-                # cumulative since start_day
                 actual_value = max(0, cumulative_actual.get(current_day, 0) - baseline)
                 actual_series.append(actual_value)
-                # ideal cumulative since start_day
                 delta_days = (current_day - start_day).days + 1
                 ideal_series.append(round(max(0, delta_days) * ideal_step, 2))
                 current_day += timedelta(days=1)
@@ -464,7 +607,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 {
                     'id': row['id'],
                     'content': row['content'],
-                    'timestamp': _parse_datetime(row['timestamp']).isoformat()
+                    'timestamp': _parse_datetime(row['timestamp']).isoformat(),
                 }
                 for row in rows
             ]
@@ -490,11 +633,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             )
             conn.commit()
             entry_id = cursor.lastrowid
-            self._respond_json({
-                'id': entry_id,
-                'content': content,
-                'timestamp': timestamp,
-            }, status=HTTPStatus.CREATED)
+            self._respond_json({'id': entry_id, 'content': content, 'timestamp': timestamp}, status=HTTPStatus.CREATED)
         finally:
             conn.close()
 
@@ -536,6 +675,9 @@ class AppHandler(SimpleHTTPRequestHandler):
 
 def run(port=8010):
     _ensure_schema()
+    # Force seeding each start to ensure demo data is visible
+    _maybe_seed_demo_data(force=True)
+    _mirror_db_to_instance()
     handler = partial(AppHandler, directory=str(BASE_DIR))
     with ThreadingHTTPServer(('0.0.0.0', port), handler) as httpd:
         print(f"Serving on http://0.0.0.0:{port}")
